@@ -61,8 +61,8 @@ transform_val = transforms.Compose([
 ])
 
 # Load datasets
-train_dataset = CustomDataset(root_dir='C:/Users/lburns/Desktop/TESTCAPSTONE/dataset/train', transform=transform_train)
-val_dataset = CustomDataset(root_dir='C:/Users/lburns/Desktop/TESTCAPSTONE/dataset/val', transform=transform_val)
+train_dataset = CustomDataset(root_dir="C:\\Users\\lburns\Desktop\\Drone_Model\dataset\\train", transform=transform_train)
+val_dataset = CustomDataset(root_dir="C:\\Users\\lburns\\Desktop\\Drone_Model\\dataset\\val", transform=transform_val)
 
 # DataLoader instances
 train_loader = DataLoader(train_dataset, batch_size=10, shuffle=True)
