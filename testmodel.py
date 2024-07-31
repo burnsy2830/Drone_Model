@@ -7,12 +7,6 @@ from PIL import Image
 import os
 import matplotlib.pyplot as plt
 
-"""
-Use this file for training model
-
-"""
-
-
 # Custom dataset class
 class CustomDataset(Dataset):
     def __init__(self, root_dir, transform=None):
@@ -43,7 +37,7 @@ class CustomDataset(Dataset):
         label = self.labels[idx]
         return image, label
 
-
+# Data transformations
 transform_train = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.RandomHorizontalFlip(),
@@ -61,14 +55,14 @@ transform_val = transforms.Compose([
 ])
 
 # Load datasets
-train_dataset = CustomDataset(root_dir="C:\\Users\\lburns\Desktop\\Drone_Model\dataset\\train", transform=transform_train)
+train_dataset = CustomDataset(root_dir="C:\\Users\\lburns\\Desktop\\Drone_Model\\dataset\\train", transform=transform_train)
 val_dataset = CustomDataset(root_dir="C:\\Users\\lburns\\Desktop\\Drone_Model\\dataset\\val", transform=transform_val)
 
 # DataLoader instances
-train_loader = DataLoader(train_dataset, batch_size=10, shuffle=True)
-val_loader = DataLoader(val_dataset, batch_size=10, shuffle=False)
+train_loader = DataLoader(train_dataset, batch_size=9, shuffle=True) #Need to use batch size of 9 (Probly a good idea to ONLY run this on a very high end pc)
+val_loader = DataLoader(val_dataset, batch_size=9, shuffle=True)
 
-# Define the model
+# Define the drone classifier model
 class DroneClassifier(nn.Module):
     def __init__(self, num_classes=2):
         super(DroneClassifier, self).__init__()
@@ -82,46 +76,75 @@ class DroneClassifier(nn.Module):
     def forward(self, x):
         return self.model(x)
 
-# Initialize the model
-model = DroneClassifier(num_classes=2)
+# Initialize the drone classifier model
+drone_model = DroneClassifier(num_classes=2)
 
-# Define loss function and optimizer
+# Define the object detection model
+detection_model = models.detection.fasterrcnn_resnet50_fpn(pretrained=True)
+
+num_classes = 2
+in_features = detection_model.roi_heads.box_predictor.cls_score.in_features
+
+
+detection_model.roi_heads.box_predictor = models.detection.faster_rcnn.FastRCNNPredictor(in_features, num_classes)
+
+# Define loss function and optimizer for both models
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.AdamW(model.parameters(), lr=0.0001)
-scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=7, gamma=0.1)
+drone_optimizer = optim.AdamW(drone_model.parameters(), lr=0.0001)
+drone_scheduler = optim.lr_scheduler.StepLR(drone_optimizer, step_size=7, gamma=0.1)
+
+detection_optimizer = optim.AdamW(detection_model.parameters(), lr=0.0001)
+detection_scheduler = optim.lr_scheduler.StepLR(detection_optimizer, step_size=7, gamma=0.1)
 
 # Set device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model.to(device)
+drone_model.to(device)
+detection_model.to(device)
 
 # Training and validation
 num_epochs = 5
 best_val_accuracy = 0.0
 
 for epoch in range(num_epochs):
-    model.train()
+    drone_model.train()
+    detection_model.train()
     running_loss = 0.0
+
     for images, labels in train_loader:
         images, labels = images.to(device), labels.to(device)
-        
-        optimizer.zero_grad()
-        outputs = model(images)
+
+        # Train the drone classifier
+        drone_optimizer.zero_grad()
+        outputs = drone_model(images)
         loss = criterion(outputs, labels)
         loss.backward()
-        optimizer.step()
+        drone_optimizer.step()
         
         running_loss += loss.item()
-    
+
+        # Train the detection model (assumes you have detection labels)
+        detection_targets = []  # Add your target labels for object detection
+        for i in range(images.size(0)):
+            detection_targets.append({
+                'boxes': torch.tensor([[0.0, 0.0, 10.0, 10.0]], dtype=torch.float32, device=device),
+                'labels': torch.tensor([1], dtype=torch.int64, device=device)
+            })
+        detection_optimizer.zero_grad()
+        detection_outputs = detection_model(images, detection_targets)
+        detection_loss = sum(loss for loss in detection_outputs.values())
+        detection_loss.backward()
+        detection_optimizer.step()
+
     print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {running_loss/len(train_loader)}")
     
-    model.eval()
+    drone_model.eval()
     val_loss = 0.0
     correct = 0
     total = 0
     with torch.no_grad():
         for images, labels in val_loader:
             images, labels = images.to(device), labels.to(device)
-            outputs = model(images)
+            outputs = drone_model(images)
             loss = criterion(outputs, labels)
             val_loss += loss.item()
             _, predicted = torch.max(outputs.data, 1)
@@ -134,43 +157,11 @@ for epoch in range(num_epochs):
     # Save the model weights if the validation accuracy is improved
     if val_accuracy > best_val_accuracy:
         best_val_accuracy = val_accuracy
-        torch.save(model.state_dict(), 'best_model_weights.pth')
+        torch.save(drone_model.state_dict(), 'best_drone_model_weights.pth')
+        #torch.save(detection_model.state_dict(), 'best_detection_model_weights.pth')
         print(f"Model weights saved at epoch {epoch+1} with validation accuracy: {val_accuracy}%")
+    
     # Step the learning rate scheduler
-    scheduler.step()
+    drone_scheduler.step()
+    detection_scheduler.step()
 
-# Function to display images with predictions
-def display_images_with_predictions(model, data_loader):
-    class_names = ['Drone', 'Not Drone']
-    model.eval()
-    with torch.no_grad():
-        for images, labels in data_loader:
-            images, labels = images.to(device), labels.to(device)
-            outputs = model(images)
-            _, preds = torch.max(outputs, 1)
-
-            plt.figure(figsize=(10, 10))
-            for i in range(len(images)):
-                image = images[i].cpu().permute(1, 2, 0).numpy()
-                image = image * [0.229, 0.224, 0.225] + [0.485, 0.456, 0.406]  # Unnormalize
-                image = image.clip(0, 1)
-
-                plt.subplot(4, 4, i + 1)
-                plt.imshow(image)
-                plt.title(f'Pred: {class_names[preds[i]]}\n(True: {class_names[labels[i]]})')
-                plt.axis('off')
-
-            plt.show()
-
-            conv1_weights = model.model.conv1.weight.data.cpu().numpy()
-
-            plt.figure(figsize=(15, 10))
-            for i in range(10):
-                plt.subplot(1, 10, i + 1)
-                plt.imshow(conv1_weights[i, 0, :, :], cmap='gray')
-                plt.axis('off')
-            plt.show()
-            break  # Display only the first batch for brevity
-
-# Display images with predictions
-display_images_with_predictions(model, val_loader)

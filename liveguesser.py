@@ -1,22 +1,11 @@
 import torch
 import torch.nn as nn
-from torchvision import transforms
-from PIL import Image
-import matplotlib.pyplot as plt
 from torchvision import transforms, models
 from PIL import Image
+import matplotlib.pyplot as plt
 import tkinter
 from tkinter import filedialog
-
-"""
-Use this file for live guessing.
-
-
-
-
-"""
-
-
+import numpy as np
 
 class DroneClassifier(nn.Module):
     def __init__(self, num_classes=2):
@@ -33,7 +22,7 @@ class DroneClassifier(nn.Module):
 
 # Load the trained model weights
 model = DroneClassifier(num_classes=2)
-model.load_state_dict(torch.load('best_model_weights.pth'))
+model.load_state_dict(torch.load('best_drone_model_weights.pth'))
 model.eval()
 
 # Set device
@@ -47,10 +36,14 @@ transform = transforms.Compose([
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
 
+# Load the object detection model (Faster R-CNN)
+detection_model = models.detection.fasterrcnn_resnet50_fpn(pretrained=True)
+detection_model.eval()
+detection_model.to(device)
+
 # Function to make a prediction on a single image
-def predict_image(image_path, model):
-    # Load and preprocess the image
-    image = Image.open(image_path).convert("RGB")
+def predict_image(image, model):
+    # Preprocess the image
     image = transform(image)
     image = image.unsqueeze(0)  # Add batch dimension
     image = image.to(device)
@@ -62,19 +55,42 @@ def predict_image(image_path, model):
 
     return predicted.item()
 
-# Function to display the image with the prediction
-def display_prediction(image_path, model):
+# Function to display the image with the prediction and bounding box
+def display_prediction(image_path, model, detection_model):
     class_names = ['Drone', 'Not Drone']
-    predicted_class = predict_image(image_path, model)
+    
+    # Load and preprocess the image for detection
     image = Image.open(image_path).convert("RGB")
+    image_np = np.array(image)
+    image_tensor = transforms.ToTensor()(image).unsqueeze(0).to(device)
 
-    plt.figure(figsize=(6, 6))
-    plt.imshow(image)
-    plt.title(f'Prediction: {class_names[predicted_class]}')
+    # Get detections
+    with torch.no_grad():
+        detections = detection_model(image_tensor)
+
+    # Draw bounding boxes and predictions
+    plt.figure(figsize=(12, 12))
+    fig, ax = plt.subplots(1, figsize=(12, 12))
+    ax.imshow(image_np)
+    
+    for i in range(len(detections[0]['boxes'])):
+        box = detections[0]['boxes'][i].cpu().numpy().astype(int)
+        score = detections[0]['scores'][i].cpu().numpy()
+        
+        if score > 0.5:  # Threshold for displaying boxes
+            xmin, ymin, xmax, ymax = box
+            crop_img = image.crop((xmin, ymin, xmax, ymax))
+            predicted_class = predict_image(crop_img, model)
+            label = f'{class_names[predicted_class]}: {score:.2f}'
+
+            # Draw rectangle
+            rect = plt.Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, fill=False, color='red', linewidth=2)
+            ax.add_patch(rect)
+            ax.text(xmin, ymin, label, fontsize=15, color='white', backgroundcolor='red')
+
+    ax.set_title(f'Predictions')
     plt.axis('off')
     plt.show()
-
-
 
 if __name__ == "__main__":
     while(True):
@@ -82,5 +98,4 @@ if __name__ == "__main__":
         file_path = tkinter.filedialog.askopenfilename()
         # Example usage: Display prediction for a single image
         image_path = file_path  # Replace with your image path
-        display_prediction(image_path, model)
-        
+        display_prediction(image_path, model, detection_model)
