@@ -247,7 +247,7 @@ api.add_resource(prediction_with_images, "/predictionImages")
 
 
 if __name__ == "__main__":
-    spinup = str(input("running as cli?"))
+    spinup = "n"
     if spinup == 'n':
         app.run(host="0.0.0.0", debug=True, threaded=True)
     else:
