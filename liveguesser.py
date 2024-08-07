@@ -6,7 +6,25 @@ import matplotlib.pyplot as plt
 import tkinter
 from tkinter import filedialog
 import numpy as np
+from flask import Flask,send_file
+from flask_restful import Api, Resource, request
+import os
+from werkzeug.utils import secure_filename
+from io import BytesIO
 
+
+
+#---------------- Flask API Settup-------------------
+app = Flask(__name__)
+api = Api(app)
+UPLOAD_FOLDER = "C:\\Users\\lburns\\Desktop\\Drone_Model\\uploads"
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+if not os.path.exists(app.config['UPLOAD_FOLDER']):
+    os.makedirs(app.config['UPLOAD_FOLDER'])
+#---------------- End of Flask API Settup-------------
+
+
+#--------------------Model Settup stuff----------------------------------
 class DroneClassifier(nn.Module):
     def __init__(self, num_classes=2):
         super(DroneClassifier, self).__init__()
@@ -20,12 +38,11 @@ class DroneClassifier(nn.Module):
     def forward(self, x):
         return self.model(x)
 
-# Load the trained model weights
 model = DroneClassifier(num_classes=2)
 model.load_state_dict(torch.load('best_drone_model_weights.pth'))
 model.eval()
 
-# Set device
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model.to(device)
 
@@ -55,8 +72,48 @@ def predict_image(image, model):
 
     return predicted.item()
 
-# Function to display the image with the prediction and bounding box
-def display_prediction(image_path, model, detection_model):
+def display_prediction(image_path, model, detection_model,display):
+    class_names = ['Drone', 'Not Drone']
+    
+    # Load and preprocess the image for detection
+    image = Image.open(image_path).convert("RGB")
+    image_np = np.array(image)
+    image_tensor = transforms.ToTensor()(image).unsqueeze(0).to(device)
+
+    # Get detections
+    with torch.no_grad():
+        detections = detection_model(image_tensor)
+
+    # Draw bounding boxes and predictions
+    plt.figure(figsize=(12, 12))
+    fig, ax = plt.subplots(1, figsize=(12, 12))
+    ax.imshow(image_np)
+    
+    for i in range(len(detections[0]['boxes'])):
+        box = detections[0]['boxes'][i].cpu().numpy().astype(int)
+        score = detections[0]['scores'][i].cpu().numpy()
+        
+        if score > 0.5:  # Threshold for displaying boxes
+            xmin, ymin, xmax, ymax = box
+            crop_img = image.crop((xmin, ymin, xmax, ymax))
+            predicted_class = predict_image(crop_img, model)
+            label = f'{class_names[predicted_class]}: {score:.2f}'
+
+            # Draw rectangle
+            rect = plt.Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, fill=False, color='red', linewidth=2)
+            ax.add_patch(rect)
+            ax.text(xmin, ymin, label, fontsize=15, color='white', backgroundcolor='red')
+
+    ax.set_title(f'Predictions')
+    plt.axis('off')
+    if display == True:
+        plt.show()
+    print(label)
+    print(class_names[predicted_class], f'{score:.2f}')
+    return class_names[predicted_class], f'{score:.2f}'
+
+
+def display_prediction_maian(image_path, model, detection_model,display):
     class_names = ['Drone', 'Not Drone']
     
     # Load and preprocess the image for detection
@@ -91,14 +148,112 @@ def display_prediction(image_path, model, detection_model):
     ax.set_title(f'Predictions')
     plt.axis('off')
     plt.show()
-    print(label)
-    return label
+
+
+
+
+
+
+def display_prediction_image(image_path, model, detection_model, display):
+    class_names = ['Drone', 'Not Drone']
+
+    # Load and preprocess the image for detection
+    image = Image.open(image_path).convert("RGB")
+    image_np = np.array(image)
+    image_tensor = transforms.ToTensor()(image).unsqueeze(0).to(device)
+
+    # Get detections
+    with torch.no_grad():
+        detections = detection_model(image_tensor)
+
+    # Draw bounding boxes and predictions
+    fig, ax = plt.subplots(1, figsize=(12, 12))
+    ax.imshow(image_np)
+    
+    for i in range(len(detections[0]['boxes'])):
+        box = detections[0]['boxes'][i].cpu().numpy().astype(int)
+        score = detections[0]['scores'][i].cpu().numpy()
+        
+        if score > 0.5:  # Threshold for displaying boxes
+            xmin, ymin, xmax, ymax = box
+            crop_img = image.crop((xmin, ymin, xmax, ymax))
+            predicted_class = predict_image(crop_img, model)
+            label = f'{class_names[predicted_class]}: {score:.2f}'
+
+            # Draw rectangle
+            rect = plt.Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, fill=False, color='red', linewidth=2)
+            ax.add_patch(rect)
+            ax.text(xmin, ymin, label, fontsize=15, color='white', backgroundcolor='red')
+
+    ax.set_title(f'Predictions')
+    plt.axis('off')
+    img_bytes = BytesIO()
+    plt.savefig(img_bytes, format='png')
+    img_bytes.seek(0)
+    return img_bytes
+
+#--------------------------------------End Of Model Stuff-------------------------------------
+
+
+
+
+
+
+
+
+
+#---------------------------------------Flask Endpoints---------------------------------------
+class prediction_only(Resource):
+    def post(self):
+        if 'file' not in request.files:
+            return {"message": "No file part"}, 400
+
+        file = request.files['file']
+        if file.filename == '':
+            return {"message": "No selected file"}, 400
+
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+
+        # Process the image and get predictions
+        class_name, confidence = display_prediction(filepath, model, detection_model, False)
+
+        return {"prediction": class_name, "confidence": confidence}
+
+
+class prediction_with_images(Resource):
+    def post(self):
+        if 'file' not in request.files:
+            return {"message": "No file part"}, 400
+
+        file = request.files['file']
+        if file.filename == '':
+            return {"message": "No selected file"}, 400
+
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+
+        # Get image with annotations
+        img_bytes = display_prediction_image(filepath, model, detection_model, False)
+
+        return send_file(img_bytes, mimetype='image/png', as_attachment=True, download_name='prediction.png')
+        
+    
+api.add_resource(prediction_only, "/predictionNumbers")
+api.add_resource(prediction_with_images, "/predictionImages")
+#--------------------------------------- End of Flask Endpoints---------------------------------------
+
 
 if __name__ == "__main__":
-    while(True):
-        tkinter.Tk().withdraw()
-        file_path = tkinter.filedialog.askopenfilename()
-        # Example usage: Display prediction for a single image
-        image_path = file_path  # Replace with your image path
-        display_prediction(image_path, model, detection_model)
-        
+    spinup = str(input("running as cli?"))
+    if spinup == 'n':
+        app.run(host="0.0.0.0", debug=True, threaded=True)
+    else:
+        while(True):
+            tkinter.Tk().withdraw()
+            file_path = tkinter.filedialog.askopenfilename()
+            image_path = file_path
+            display_prediction_maian(image_path, model, detection_model,True)
+
