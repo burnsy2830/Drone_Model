@@ -91,6 +91,8 @@ def display_prediction(image_path, model, detection_model):
     ax.set_title(f'Predictions')
     plt.axis('off')
     plt.show()
+    print(label)
+    return label
 
 if __name__ == "__main__":
     while(True):
@@ -99,3 +101,4 @@ if __name__ == "__main__":
         # Example usage: Display prediction for a single image
         image_path = file_path  # Replace with your image path
         display_prediction(image_path, model, detection_model)
+        
