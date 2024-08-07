@@ -255,13 +255,6 @@ api.add_resource(prediction_with_images, "/predictionImages")
 
 
 if __name__ == "__main__":
-    spinup = "n"
-    if spinup == 'n':
-        app.run(host="0.0.0.0", debug=True, threaded=True)
-    else:
-        while(True):
-            tkinter.Tk().withdraw()
-            file_path = tkinter.filedialog.askopenfilename()
-            image_path = file_path
-            display_prediction_maian(image_path, model, detection_model,True)
+    app.run(host="0.0.0.0", debug=True, threaded=True)
+
 
