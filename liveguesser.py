@@ -255,6 +255,6 @@ api.add_resource(prediction_with_images, "/predictionImages")
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", debug=True, threaded=True)
+    app.run(host="192.168.2.49", debug=True, threaded=True)
 
 
