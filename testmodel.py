@@ -5,7 +5,9 @@ from torchvision import transforms, models
 from torch.utils.data import DataLoader, Dataset
 from PIL import Image
 import os
+import sys
 import matplotlib.pyplot as plt
+from pathlib import Path
 
 # Custom dataset class
 class CustomDataset(Dataset):
@@ -54,13 +56,26 @@ transform_val = transforms.Compose([
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
 
-# Load datasets
-train_dataset = CustomDataset(root_dir="C:\\Users\\lburns\\Desktop\\Drone_Model\\dataset\\train", transform=transform_train)
-val_dataset = CustomDataset(root_dir="C:\\Users\\lburns\\Desktop\\Drone_Model\\dataset\\val", transform=transform_val)
 
-# DataLoader instances
-train_loader = DataLoader(train_dataset, batch_size=9, shuffle=True) #Need to use batch size of 9 (Probly a good idea to ONLY run this on a very high end pc)
-val_loader = DataLoader(val_dataset, batch_size=9, shuffle=True)
+
+
+working_directory = Path(os.path.realpath(sys.argv[0])).parent
+
+
+train_path = working_directory / 'dataset' / 'train'
+val_path = working_directory / 'dataset' / 'val'
+
+
+print(f"Train path: {train_path}")
+print(f"Validation path: {val_path}")
+
+# Load datasets
+train_dataset = CustomDataset(root_dir=train_path, transform=transform_train)
+val_dataset = CustomDataset(root_dir=val_path, transform=transform_val)
+
+
+train_loader = DataLoader(train_dataset, batch_size=9, shuffle=True)
+val_loader = DataLoader(val_dataset, batch_size=9, shuffle=False)
 
 # Define the drone classifier model
 class DroneClassifier(nn.Module):
