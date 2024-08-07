@@ -17,7 +17,8 @@ from io import BytesIO
 #---------------- Flask API Settup-------------------
 app = Flask(__name__)
 api = Api(app)
-UPLOAD_FOLDER = "C:\\Users\\lburns\\Desktop\\Drone_Model\\uploads"
+base_dir = os.path.abspath(os.path.dirname(__file__))
+UPLOAD_FOLDER = os.path.join(base_dir, 'uploads')
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 if not os.path.exists(app.config['UPLOAD_FOLDER']):
     os.makedirs(app.config['UPLOAD_FOLDER'])
@@ -71,6 +72,13 @@ def predict_image(image, model):
         _, predicted = torch.max(output, 1)
 
     return predicted.item()
+
+#---------------------------------End Of Model---------------------
+
+
+
+
+#---------------- Displaying Returns---------------------------------
 
 def display_prediction(image_path, model, detection_model,display):
     class_names = ['Drone', 'Not Drone']
@@ -192,7 +200,7 @@ def display_prediction_image(image_path, model, detection_model, display):
     img_bytes.seek(0)
     return img_bytes
 
-#--------------------------------------End Of Model Stuff-------------------------------------
+#--------------------------------------End of Displaying results-------------------------------------
 
 
 
