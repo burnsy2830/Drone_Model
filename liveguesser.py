@@ -40,7 +40,7 @@ class DroneClassifier(nn.Module):
         return self.model(x)
 
 model = DroneClassifier(num_classes=2)
-model.load_state_dict(torch.load('best_drone_model_weights.pth'))
+model.load_state_dict(torch.load('best_drone_model_weights.pth', map_location=torch.device('cpu')))
 model.eval()
 
 
